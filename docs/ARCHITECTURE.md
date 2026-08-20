@@ -29,14 +29,27 @@ Shared stigmergy memory using JSONL persistence.
 - Agent-specific filtering
 
 ### 3. Orchestrator (src/core/orchestrator.py)
-LangGraph-based workflow with parallel nodes and human-in-the-loop.
+LangGraph-based workflow with parallel nodes and real human-in-the-loop gates.
 
-**Pattern:** Scout → Planner → [Coder + Critic] → Synthesizer
+**Pattern:** Scout → Planner → **[plan gate]** → [Coder + Critic] → Synthesizer → **[final gate]**
 
-### 4. Sandbox (src/sandbox/docker_manager.py)
-Docker isolation with permission gates.
+The two gates are genuine LangGraph `interrupt()` pauses, not simulated ones:
+the graph's execution actually stops at `plan_gate`/`final_gate` and a
+`Command(resume={"approved": bool, "reason": str | None})` is required to
+continue. A `MemorySaver` checkpointer on the orchestrator singleton
+(`get_orchestrator()`) keeps a paused run resumable across separate API
+requests, keyed by `thread_id`. Both the CLI (`openswarm run`, interactively
+by default) and the API (`/v1/stream`, `/v1/approve`) drive the same gates.
 
-**Features:**
+### 4. Sandbox (planned)
+`config/permissions.yaml` already declares the intended read-only vs
+writable path policy, and `docker/` provides the service stack (Ollama +
+LiteLLM + API), but there is **no code yet** that actually executes agent
+commands inside a Docker container per that policy — the coder/critic
+nodes today produce simulated output rather than shelling out. Tracked in
+[ROADMAP.md](../ROADMAP.md).
+
+**Planned features:**
 - Read-only mounts for Scout/Critic
 - Read-write after human approval
 - Resource limits and timeouts

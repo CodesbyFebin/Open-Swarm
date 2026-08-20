@@ -3,69 +3,161 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Open Swarm - Local-first Parallel Multi-Agent Coding</title>
+    <title>Open Swarm — Local-first Parallel Multi-Agent Coding</title>
+    <meta name="description" content="Open Swarm is a local-first, zero-cost parallel multi-agent coding swarm. Route across free/local LLMs, run Scout/Planner/Coder/Critic agents concurrently, and keep your code on your machine.">
+    <meta name="theme-color" content="#0a0a0a">
+    <link rel="canonical" href="https://open-swarm.vercel.app/">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Open Swarm — Local-first Parallel Multi-Agent Coding">
+    <meta property="og:description" content="Unlimited tokens. Forever. Your machine. Your agent. A local-first, zero-cost parallel multi-agent coding swarm.">
+    <meta property="og:url" content="https://open-swarm.vercel.app/">
+    <meta property="og:site_name" content="Open Swarm">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Open Swarm — Local-first Parallel Multi-Agent Coding">
+    <meta name="twitter:description" content="Unlimited tokens. Forever. Your machine. Your agent. A local-first, zero-cost parallel multi-agent coding swarm.">
+
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐝</text></svg>">
+
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0a0a0a;
+            --panel: #111;
+            --panel-border: #222;
+            --text: #fff;
+            --muted: #999;
+            --accent: #f59e0b;
+            --accent-2: #eab308;
+        }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0a0a0a;
-            color: #fff;
+            background: var(--bg);
+            color: var(--text);
             line-height: 1.6;
         }
-        .container { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
-        header { text-align: center; padding: 60px 0; }
-        h1 { font-size: 3rem; margin-bottom: 20px; background: linear-gradient(135deg, #f59e0b, #eab308); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .tagline { font-size: 1.25rem; color: #999; margin-bottom: 40px; }
-        .cta { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; margin: 40px 0; }
+        a { color: inherit; }
+        .container { max-width: 960px; margin: 0 auto; padding: 40px 20px; }
+
+        header { text-align: center; padding: 64px 0 40px; }
+        .badges { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+        .badges img { height: 20px; display: block; }
+        h1 { font-size: clamp(2.2rem, 6vw, 3.2rem); margin-bottom: 16px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .tagline { font-size: 1.2rem; color: var(--muted); max-width: 640px; margin: 0 auto 8px; }
+        .status-pill {
+            display: inline-block; margin-top: 16px; padding: 5px 14px; border-radius: 999px;
+            border: 1px solid #333; color: var(--muted); font-size: 0.8rem; letter-spacing: 0.02em;
+        }
+        .cta { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin: 32px 0 8px; }
         .btn {
             padding: 14px 28px;
             border-radius: 8px;
             text-decoration: none;
             font-weight: 600;
-            transition: all 0.2s;
+            transition: transform 0.15s ease, opacity 0.15s ease;
             display: inline-block;
         }
-        .btn-primary { background: #f59e0b; color: #000; }
-        .btn-secondary { background: #1a1a1a; color: #fff; border: 1px solid #333; }
+        .btn-primary { background: var(--accent); color: #000; }
+        .btn-secondary { background: var(--panel); color: #fff; border: 1px solid #333; }
         .btn:hover { transform: translateY(-2px); opacity: 0.9; }
-        .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 30px; margin: 60px 0; }
-        .feature { background: #111; padding: 24px; border-radius: 12px; border: 1px solid #222; }
-        .feature h3 { color: #f59e0b; margin-bottom: 12px; }
-        .code { background: #000; padding: 20px; border-radius: 8px; margin: 30px 0; overflow-x: auto; }
-        .code pre { color: #eab308; font-family: 'Courier New', monospace; font-size: 0.9rem; }
-        footer { text-align: center; padding: 40px 0; color: #666; border-top: 1px solid #222; margin-top: 60px; }
+
+        h2.section-title { text-align: center; margin: 8px 0 28px; font-size: 1.6rem; }
+
+        .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 24px; margin: 56px 0; }
+        .feature { background: var(--panel); padding: 24px; border-radius: 12px; border: 1px solid var(--panel-border); }
+        .feature h3 { color: var(--accent); margin-bottom: 10px; font-size: 1.05rem; }
+        .feature p { color: #ccc; font-size: 0.95rem; }
+
+        .architecture {
+            background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px;
+            padding: 28px; margin: 56px 0; overflow-x: auto;
+        }
+        .architecture pre {
+            font-family: 'SFMono-Regular', Consolas, 'Courier New', monospace;
+            font-size: 0.85rem; color: #ddd; white-space: pre; line-height: 1.5;
+        }
+
+        .code { background: #000; padding: 20px; border-radius: 8px; margin: 24px 0; overflow-x: auto; border: 1px solid var(--panel-border); }
+        .code pre { color: var(--accent-2); font-family: 'SFMono-Regular', Consolas, 'Courier New', monospace; font-size: 0.88rem; }
+
+        table.usage { width: 100%; border-collapse: collapse; margin: 24px 0 56px; }
+        table.usage th, table.usage td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--panel-border); font-size: 0.92rem; }
+        table.usage th { color: var(--muted); font-weight: 600; }
+        table.usage code { color: var(--accent-2); background: #000; padding: 2px 6px; border-radius: 4px; }
+
+        .links-row { display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; margin: 8px 0 56px; }
+        .links-row a { color: var(--muted); text-decoration: none; font-size: 0.9rem; border-bottom: 1px solid transparent; }
+        .links-row a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+        footer { text-align: center; padding: 40px 0; color: #666; border-top: 1px solid var(--panel-border); margin-top: 40px; }
+        footer a { color: var(--accent); text-decoration: none; }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
+            <div class="badges">
+                <a href="https://github.com/CodesbyFebin/Open-Swarm/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/CodesbyFebin/Open-Swarm/ci.yml?branch=main&label=CI" alt="CI status"></a>
+                <a href="https://github.com/CodesbyFebin/Open-Swarm/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License"></a>
+                <a href="https://github.com/CodesbyFebin/Open-Swarm/stargazers"><img src="https://img.shields.io/github/stars/CodesbyFebin/Open-Swarm?style=flat&color=f59e0b" alt="GitHub stars"></a>
+            </div>
             <h1>🐝 Open Swarm</h1>
             <p class="tagline">Local-first parallel multi-agent coding — zero-cost, private, yours</p>
+            <span class="status-pill">Early alpha · actively developed</span>
             <div class="cta">
-                <a href="https://github.com/CodesbyFebin/Open-Swarm" class="btn btn-primary">Star on GitHub</a>
-                <a href="https://github.com/CodesbyFebin/Open-Swarm#readme" class="btn btn-secondary">Read Docs</a>
+                <a href="https://github.com/CodesbyFebin/Open-Swarm" class="btn btn-primary">⭐ Star on GitHub</a>
+                <a href="https://github.com/CodesbyFebin/Open-Swarm#readme" class="btn btn-secondary">Read the Docs</a>
             </div>
         </header>
 
         <main>
-            <h2 style="text-align: center; margin-bottom: 30px;">AI shouldn't have a meter. Unlimited tokens. Forever. Your machine. Your agent.</h2>
-            
+            <h2 style="text-align: center; margin-bottom: 40px; font-weight: 500; color: #ddd;">AI shouldn't have a meter. Unlimited tokens. Forever. Your machine. Your agent.</h2>
+
+            <h2 class="section-title">Why Open Swarm</h2>
             <div class="features">
                 <div class="feature">
                     <h3>🐝 Local-first routing</h3>
-                    <p>Intelligent model router picks local Ollama models first, falls back to free cloud tiers automatically</p>
+                    <p>Intelligent model router picks local Ollama models first, falls back to free cloud tiers automatically.</p>
                 </div>
                 <div class="feature">
                     <h3>⚡ Parallel agents</h3>
-                    <p>Scout, Planner, Coder, Critic, Synthesizer work concurrently through a shared blackboard</p>
+                    <p>Scout, Planner, Coder, Critic and Synthesizer work concurrently through a shared blackboard — no wasted token round-trips.</p>
                 </div>
                 <div class="feature">
-                    <h3>🔒 Zero-cost</h3>
-                    <p>No API keys, no per-token costs. Runs entirely on your machine with free-tier fallbacks</p>
+                    <h3>🔒 Zero-cost, private</h3>
+                    <p>No API keys required, no per-token costs. Runs entirely on your machine with free-tier fallbacks.</p>
+                </div>
+                <div class="feature">
+                    <h3>🧭 Human-in-the-loop</h3>
+                    <p>Docker sandboxing and approval gates before any destructive operation — you stay in control.</p>
+                </div>
+                <div class="feature">
+                    <h3>📜 Declarative playbooks</h3>
+                    <p>YAML-defined workflows for reusable multi-agent patterns like refactors, audits, and reviews.</p>
+                </div>
+                <div class="feature">
+                    <h3>🧩 Open & composable</h3>
+                    <p>MIT-licensed Python core built on LangGraph, with MCP tool support on the roadmap.</p>
                 </div>
             </div>
 
-            <h3 style="margin: 40px 0 20px;">Quick Start</h3>
+            <h2 class="section-title">How it works</h2>
+            <div class="architecture">
+                <pre>User Goal → Router → Parallel Swarm Launch
+  ├─ Scout Agent    → explore codebase
+  ├─ Planner Agent  → create plan
+  ├─ Coder Agent(s) → implement
+  └─ Critic Agent   → verify
+        ↓
+  Shared Blackboard (stigmergy memory)
+        ↓
+  Synthesis → Human Gate → Execute</pre>
+            </div>
+
+            <h2 class="section-title">Quick Start</h2>
             <div class="code">
                 <pre>git clone https://github.com/CodesbyFebin/Open-Swarm.git
 cd Open-Swarm
@@ -75,17 +167,31 @@ ollama pull qwen2.5-coder:3b
 openswarm run "Refactor authentication to use async/await"</pre>
             </div>
 
-            <h3 style="margin: 40px 0 20px;">Three ways to use it</h3>
-            <ul style="list-style: none; padding: 0;">
-                <li style="padding: 10px 0;">⚡ <strong>CLI:</strong> <code>openswarm run "your goal"</code></li>
-                <li style="padding: 10px 0;">🖥️ <strong>TUI:</strong> <code>openswarm tui "your goal"</code> — multi-panel terminal UI</li>
-                <li style="padding: 10px 0;">🌐 <strong>Dashboard:</strong> <code>openswarm serve</code> — http://localhost:8000/dashboard</li>
-            </ul>
+            <h2 class="section-title">Three ways to use it</h2>
+            <table class="usage">
+                <thead>
+                    <tr><th>Interface</th><th>Command</th><th>Notes</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>⚡ CLI</td><td><code>openswarm run "your goal"</code></td><td>Scriptable, CI-friendly</td></tr>
+                    <tr><td>📱 Dashboard</td><td><code>openswarm serve</code></td><td>Mobile-first chat UI, live agent timeline over SSE, at <code>localhost:8000/dashboard</code></td></tr>
+                    <tr><td>🖥️ TUI</td><td><code>openswarm tui</code></td><td>Multi-panel terminal UI (in progress)</td></tr>
+                </tbody>
+            </table>
+
+            <div class="links-row">
+                <a href="https://github.com/CodesbyFebin/Open-Swarm/blob/main/docs/ARCHITECTURE.md">Architecture</a>
+                <a href="https://github.com/CodesbyFebin/Open-Swarm/blob/main/docs/GETTING_STARTED.md">Getting Started</a>
+                <a href="https://github.com/CodesbyFebin/Open-Swarm/blob/main/ROADMAP.md">Roadmap</a>
+                <a href="https://github.com/CodesbyFebin/Open-Swarm/blob/main/CONTRIBUTING.md">Contributing</a>
+                <a href="https://github.com/CodesbyFebin/Open-Swarm/blob/main/SECURITY.md">Security</a>
+                <a href="https://github.com/CodesbyFebin/Open-Swarm/issues">Issues</a>
+            </div>
         </main>
 
         <footer>
-            <p>Made with ❤️ by the Open Swarm community</p>
-            <p><a href="https://github.com/CodesbyFebin/Open-Swarm" style="color: #f59e0b;">github.com/CodesbyFebin/Open-Swarm</a></p>
+            <p>MIT licensed · made with ❤️ by the Open Swarm community</p>
+            <p><a href="https://github.com/CodesbyFebin/Open-Swarm">github.com/CodesbyFebin/Open-Swarm</a></p>
         </footer>
     </div>
 </body>

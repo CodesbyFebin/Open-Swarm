@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Open Swarm</title>
+<meta name="theme-color" content="#0a0a0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐝</text></svg>">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #131313;
+    --surface-2: #1a1a1a;
+    --border: #262626;
+    --text: #f5f5f5;
+    --muted: #8f8f8f;
+    --accent: #f59e0b;
+    --accent-ink: #1a1200;
+    --ok: #22c55e;
+    --err: #ef4444;
+    --radius: 18px;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overscroll-behavior-y: contain;
+  }
+
+  #app {
+    max-width: 480px;
+    margin: 0 auto;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    position: relative;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+  }
+  @media (min-width: 481px) {
+    body { background: #000; }
+    #app { box-shadow: 0 0 60px rgba(0,0,0,0.6); }
+  }
+
+  /* Top bar */
+  .topbar {
+    flex: 0 0 auto;
+    padding: calc(14px + var(--safe-t)) 16px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(10,10,10,0.9);
+    backdrop-filter: blur(8px);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+  .topbar .logo { font-size: 22px; line-height: 1; }
+  .topbar .titles { flex: 1; min-width: 0; }
+  .topbar h1 { font-size: 16px; margin: 0; font-weight: 700; }
+  .topbar .sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--ok);
+    box-shadow: 0 0 0 3px rgba(34,197,94,0.15);
+    flex: 0 0 auto;
+  }
+  .status-dot.busy { background: var(--accent); box-shadow: 0 0 0 3px rgba(245,158,11,0.18); animation: pulse 1.1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  /* Views */
+  .view { flex: 1 1 auto; overflow-y: auto; display: none; padding: 16px; }
+  .view.active { display: block; }
+
+  /* Chat view */
+  #view-chat { display: none; flex-direction: column; padding: 16px 14px 12px; gap: 14px; }
+  #view-chat.active { display: flex; }
+  .empty-state { margin: auto 0; text-align: center; color: var(--muted); padding: 24px 12px; }
+  .empty-state .emoji { font-size: 34px; margin-bottom: 10px; }
+  .empty-state h2 { font-size: 15px; color: var(--text); margin: 0 0 6px; }
+  .empty-state p { font-size: 13px; margin: 0 0 16px; line-height: 1.5; }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .chip {
+    font-size: 12px; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); cursor: pointer;
+  }
+  .chip:active { transform: scale(0.97); }
+
+  .bubble-row { display: flex; }
+  .bubble-row.user { justify-content: flex-end; }
+  .bubble {
+    max-width: 84%;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .bubble.user { background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 6px; font-weight: 500; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    border-bottom-left-radius: 6px;
+    padding: 14px;
+    width: 100%;
+  }
+  .card .card-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 10px; }
+
+  .step { display: flex; gap: 10px; padding: 7px 0; }
+  .step .dot-wrap { flex: 0 0 auto; width: 20px; display: flex; justify-content: center; padding-top: 2px; }
+  .step .dot { width: 9px; height: 9px; border-radius: 50%; background: #3a3a3a; }
+  .step.done .dot { background: var(--ok); }
+  .step.active .dot { background: var(--accent); animation: pulse 1s infinite; }
+  .step.error .dot { background: var(--err); }
+  .step .body { flex: 1; min-width: 0; }
+  .step .name { font-size: 13.5px; font-weight: 600; }
+  .step .msg { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+  .step .icon { margin-right: 4px; }
+
+  .result-card pre {
+    white-space: pre-wrap; word-break: break-word; font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 12.5px; color: #ddd; margin: 0; max-height: 320px; overflow-y: auto;
+  }
+  .result-card .actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+  .icon-btn {
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--muted);
+    font-size: 11.5px; padding: 6px 10px; border-radius: 8px; cursor: pointer;
+  }
+  .icon-btn:active { transform: scale(0.97); }
+
+  .error-card { border-color: rgba(239,68,68,0.4); }
+  .error-card .card-title { color: var(--err); }
+
+  .approval-card { border-color: rgba(245,158,11,0.4); }
+  .approval-card .card-title { color: var(--accent); }
+  .approval-detail {
+    white-space: pre-wrap; word-break: break-word; font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 12.5px; color: #ddd; margin: 0 0 12px; max-height: 220px; overflow-y: auto;
+  }
+  .approval-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .approve-btn { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  .reject-btn { color: var(--err); border-color: rgba(239,68,68,0.3); }
+  .decision-label { font-size: 12px; color: var(--muted); font-weight: 600; }
+
+  /* Composer */
+  .composer {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    padding: 10px 12px calc(10px + var(--safe-b));
+    border-top: 1px solid var(--border);
+    background: rgba(10,10,10,0.92);
+    backdrop-filter: blur(8px);
+  }
+  #goal-input {
+    flex: 1;
+    resize: none;
+    max-height: 96px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 22px;
+    padding: 11px 16px;
+    font-size: 14.5px;
+    font-family: inherit;
+    outline: none;
+  }
+  #goal-input:focus { border-color: #3a3a3a; }
+  #send-btn {
+    flex: 0 0 auto;
+    width: 42px; height: 42px; border-radius: 50%;
+    background: var(--accent); color: var(--accent-ink); border: none;
+    font-size: 17px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  #send-btn:disabled { opacity: 0.4; }
+  #send-btn:active:not(:disabled) { transform: scale(0.94); }
+
+  /* Models view */
+  .model-group { margin-bottom: 20px; }
+  .model-group h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0 0 10px; }
+  .model-row {
+    display: flex; align-items: center; gap: 10px; padding: 11px 12px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px;
+  }
+  .model-row .badge {
+    flex: 0 0 auto; font-size: 10px; padding: 3px 7px; border-radius: 6px; font-weight: 700;
+  }
+  .badge.local { background: rgba(34,197,94,0.15); color: var(--ok); }
+  .badge.cloud { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .model-row .name { font-size: 13px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .model-row .meta { font-size: 10.5px; color: var(--muted); }
+  .stats-strip { display: flex; gap: 8px; margin-bottom: 18px; }
+  .stat-tile {
+    flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px; text-align: center;
+  }
+  .stat-tile .n { font-size: 20px; font-weight: 700; color: var(--accent); }
+  .stat-tile .l { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+
+  /* Status view */
+  .kv-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .kv-row .k { color: var(--muted); }
+  .bb-key {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px; margin-bottom: 8px;
+  }
+  .bb-key .k-name { font-size: 13px; font-weight: 600; }
+  .bb-key .k-meta { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+  .refresh-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .refresh-row h2 { font-size: 15px; margin: 0; }
+
+  .view h2.section { font-size: 15px; margin: 0 0 14px; }
+  .placeholder-note { font-size: 12px; color: var(--muted); text-align: center; padding: 30px 10px; }
+
+  /* Bottom tab bar */
+  .tabbar {
+    flex: 0 0 auto;
+    display: flex;
+    border-top: 1px solid var(--border);
+    background: rgba(10,10,10,0.96);
+    padding-bottom: var(--safe-b);
+  }
+  .tab {
+    flex: 1;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 9px 0 8px;
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-family: inherit;
+  }
+  .tab .ti { font-size: 19px; }
+  .tab .tl { font-size: 10px; font-weight: 600; }
+  .tab.active { color: var(--accent); }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="topbar">
+    <div class="logo">🐝</div>
+    <div class="titles">
+      <h1>Open Swarm</h1>
+      <div class="sub" id="topbar-sub">local-first · idle</div>
+    </div>
+    <div class="status-dot" id="status-dot"></div>
+  </div>
+
+  <div id="view-chat" class="view active">
+    <div id="empty-state" class="empty-state">
+      <div class="emoji">🐝</div>
+      <h2>What should the swarm work on?</h2>
+      <p>Scout, Planner, Coder and Critic will run the goal below and report back here.</p>
+      <div class="chip-row">
+        <div class="chip" data-goal="Refactor authentication to use async/await">Refactor auth</div>
+        <div class="chip" data-goal="Add unit tests for the blackboard module">Add tests</div>
+        <div class="chip" data-goal="Explore the codebase and summarize the architecture">Explore codebase</div>
+      </div>
+    </div>
+    <div id="thread" style="display:flex; flex-direction:column; gap:14px;"></div>
+  </div>
+
+  <div id="view-models" class="view">
+    <div class="refresh-row">
+      <h2 class="section">Model Pool</h2>
+      <button class="icon-btn" onclick="loadModels()">Refresh</button>
+    </div>
+    <div id="models-body">
+      <div class="placeholder-note">Loading models…</div>
+    </div>
+  </div>
+
+  <div id="view-status" class="view">
+    <div class="refresh-row">
+      <h2 class="section">Blackboard Status</h2>
+      <button class="icon-btn" onclick="loadStatus()">Refresh</button>
+    </div>
+    <div id="status-body">
+      <div class="placeholder-note">Loading status…</div>
+    </div>
+  </div>
+
+  <div class="composer" id="composer">
+    <textarea id="goal-input" rows="1" placeholder="Describe a goal for the swarm…"></textarea>
+    <button id="send-btn" onclick="runSwarm()" aria-label="Run">➤</button>
+  </div>
+
+  <div class="tabbar">
+    <button class="tab active" data-view="chat" onclick="switchTab('chat')">
+      <span class="ti">💬</span><span class="tl">Swarm</span>
+    </button>
+    <button class="tab" data-view="models" onclick="switchTab('models')">
+      <span class="ti">🧠</span><span class="tl">Models</span>
+    </button>
+    <button class="tab" data-view="status" onclick="switchTab('status')">
+      <span class="ti">📊</span><span class="tl">Status</span>
+    </button>
+  </div>
+
+</div>
+
+<script>
+const STAGE_META = {
+  scout: { icon: '🔎', label: 'Scout' },
+  planner: { icon: '🗺️', label: 'Planner' },
+  workers: { icon: '⚙️', label: 'Coder + Critic' },
+  synthesizer: { icon: '🧩', label: 'Synthesizer' },
+};
+const STAGE_ORDER = ['scout', 'planner', 'workers', 'synthesizer'];
+
+const thread = document.getElementById('thread');
+const emptyState = document.getElementById('empty-state');
+const goalInput = document.getElementById('goal-input');
+const sendBtn = document.getElementById('send-btn');
+const statusDot = document.getElementById('status-dot');
+const topbarSub = document.getElementById('topbar-sub');
+
+let running = false;
+
+document.querySelectorAll('.chip').forEach((chip) => {
+  chip.addEventListener('click', () => {
+    goalInput.value = chip.dataset.goal;
+    goalInput.focus();
+  });
+});
+
+goalInput.addEventListener('input', () => {
+  goalInput.style.height = 'auto';
+  goalInput.style.height = Math.min(goalInput.scrollHeight, 96) + 'px';
+});
+goalInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    runSwarm();
+  }
+});
+
+function switchTab(name) {
+  document.querySelectorAll('.view').forEach((v) => v.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+  document.querySelector('.tab[data-view="' + name + '"]').classList.add('active');
+  document.getElementById('composer').style.display = name === 'chat' ? 'flex' : 'none';
+
+  if (name === 'models' && !modelsLoaded) loadModels();
+  if (name === 'status') loadStatus();
+}
+
+function scrollThreadToBottom() {
+  const view = document.getElementById('view-chat');
+  requestAnimationFrame(() => { view.scrollTop = view.scrollHeight; });
+}
+
+function addUserBubble(text) {
+  emptyState.style.display = 'none';
+  const row = document.createElement('div');
+  row.className = 'bubble-row user';
+  row.innerHTML = '<div class="bubble user"></div>';
+  row.querySelector('.bubble').textContent = text;
+  thread.appendChild(row);
+  scrollThreadToBottom();
+}
+
+function addTimelineCard() {
+  const row = document.createElement('div');
+  row.className = 'bubble-row';
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = '<div class="card-title">Swarm run</div><div class="steps"></div>';
+  row.appendChild(card);
+  thread.appendChild(row);
+  scrollThreadToBottom();
+
+  const stepsEl = card.querySelector('.steps');
+  STAGE_ORDER.forEach((key) => {
+    const meta = STAGE_META[key];
+    const step = document.createElement('div');
+    step.className = 'step';
+    step.dataset.stage = key;
+    step.innerHTML =
+      '<div class="dot-wrap"><div class="dot"></div></div>' +
+      '<div class="body">' +
+      '<div class="name"><span class="icon">' + meta.icon + '</span>' + meta.label + '</div>' +
+      '<div class="msg">Queued</div>' +
+      '</div>';
+    stepsEl.appendChild(step);
+  });
+  return stepsEl;
+}
+
+function setStepState(stepsEl, stage, state, message) {
+  const step = stepsEl.querySelector('.step[data-stage="' + stage + '"]');
+  if (!step) return;
+  step.classList.remove('active', 'done', 'error');
+  step.classList.add(state);
+  if (message) step.querySelector('.msg').textContent = message;
+}
+
+function markAllError(stepsEl) {
+  stepsEl.querySelectorAll('.step').forEach((s) => {
+    if (!s.classList.contains('done')) {
+      s.classList.remove('active');
+      s.classList.add('error');
+    }
+  });
+}
+
+function addResultCard(finalOutput) {
+  const row = document.createElement('div');
+  row.className = 'bubble-row';
+  const card = document.createElement('div');
+  card.className = 'card result-card';
+  const pre = document.createElement('pre');
+  pre.textContent = finalOutput || 'No output produced.';
+  card.innerHTML = '<div class="card-title">Result</div>';
+  card.appendChild(pre);
+  const actions = document.createElement('div');
+  actions.className = 'actions';
+  const btn = document.createElement('button');
+  btn.className = 'icon-btn';
+  btn.textContent = 'Copy';
+  btn.onclick = () => {
+    navigator.clipboard.writeText(finalOutput || '');
+    btn.textContent = 'Copied';
+    setTimeout(() => (btn.textContent = 'Copy'), 1200);
+  };
+  actions.appendChild(btn);
+  card.appendChild(actions);
+  row.appendChild(card);
+  thread.appendChild(row);
+  scrollThreadToBottom();
+}
+
+function addErrorCard(message) {
+  const row = document.createElement('div');
+  row.className = 'bubble-row';
+  const card = document.createElement('div');
+  card.className = 'card error-card';
+  card.innerHTML = '<div class="card-title">Error</div><div class="error-msg" style="font-size:13px;"></div>';
+  card.querySelector('.error-msg').textContent = message;
+  row.appendChild(card);
+  thread.appendChild(row);
+  scrollThreadToBottom();
+}
+
+function addAbortedCard(reason) {
+  const row = document.createElement('div');
+  row.className = 'bubble-row';
+  const card = document.createElement('div');
+  card.className = 'card error-card';
+  card.innerHTML = '<div class="card-title">Run aborted</div><div class="error-msg" style="font-size:13px;"></div>';
+  card.querySelector('.error-msg').textContent = reason || 'Rejected at an approval gate.';
+  row.appendChild(card);
+  thread.appendChild(row);
+  scrollThreadToBottom();
+}
+
+// Real human-in-the-loop gate: the backend graph has genuinely paused and is
+// waiting on a resume. Resolves to true/false once the user taps a button.
+function addApprovalCard(evt) {
+  const gateLabel = evt.gate === 'plan' ? 'Plan' : 'Final output';
+  const detail = evt.gate === 'plan' ? evt.payload.plan : evt.payload.final_output;
+
+  const row = document.createElement('div');
+  row.className = 'bubble-row';
+  const card = document.createElement('div');
+  card.className = 'card approval-card';
+  card.innerHTML =
+    '<div class="card-title">Approval needed · ' + gateLabel + '</div>' +
+    '<pre class="approval-detail"></pre>' +
+    '<div class="approval-actions">' +
+    '<button class="icon-btn reject-btn">Reject</button>' +
+    '<button class="icon-btn approve-btn">Approve</button>' +
+    '</div>';
+  card.querySelector('.approval-detail').textContent = detail || '';
+  row.appendChild(card);
+  thread.appendChild(row);
+  scrollThreadToBottom();
+
+  return new Promise((resolve) => {
+    const actions = card.querySelector('.approval-actions');
+    const finish = (approved) => {
+      actions.innerHTML = '<span class="decision-label">' +
+        (approved ? '✓ Approved' : '✕ Rejected') + '</span>';
+      resolve(approved);
+    };
+    card.querySelector('.approve-btn').onclick = () => finish(true);
+    card.querySelector('.reject-btn').onclick = () => finish(false);
+  });
+}
+
+// Reads one SSE stream to completion, updating the run's timeline card as
+// real events arrive. On an approval gate it shows the gate, waits for the
+// user's decision, then POSTs the resume and keeps consuming — same
+// timeline, same thread — until the run actually finishes.
+async function consumeStream(response, stepsEl, threadId) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let lastStage = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const parts = buffer.split('\n\n');
+    buffer = parts.pop();
+
+    for (const part of parts) {
+      const line = part.split('\n').find((l) => l.startsWith('data: '));
+      if (!line) continue;
+      const evt = JSON.parse(line.slice(6));
+
+      if (evt.type === 'stage') {
+        if (lastStage) setStepState(stepsEl, lastStage, 'done', 'Done');
+        setStepState(stepsEl, evt.stage, 'active', evt.message);
+        lastStage = evt.stage;
+      } else if (evt.type === 'awaiting_approval') {
+        if (lastStage) setStepState(stepsEl, lastStage, 'done', 'Done');
+        const approved = await addApprovalCard(evt);
+        const res = await fetch('/v1/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ thread_id: threadId, resume: { approved } }),
+        });
+        await consumeStream(res, stepsEl, threadId);
+        return;
+      } else if (evt.type === 'completed') {
+        if (lastStage) setStepState(stepsEl, lastStage, 'done', 'Done');
+        const ok = evt.result && evt.result.success;
+        addResultCard(ok ? evt.result.final_output : 'Swarm did not complete successfully.');
+      } else if (evt.type === 'aborted') {
+        markAllError(stepsEl);
+        addAbortedCard(evt.reason);
+      } else if (evt.type === 'error') {
+        markAllError(stepsEl);
+        addErrorCard(evt.error || 'Unknown error');
+      }
+    }
+  }
+}
+
+function setRunning(isRunning) {
+  running = isRunning;
+  sendBtn.disabled = isRunning;
+  goalInput.disabled = isRunning;
+  statusDot.classList.toggle('busy', isRunning);
+  topbarSub.textContent = isRunning ? 'local-first · running swarm…' : 'local-first · idle';
+}
+
+// One thread per page load, so concurrent dashboard tabs/users don't share
+// a run (the backend keeps one paused-run slot per thread_id).
+const THREAD_ID = 'dashboard-' + Math.random().toString(36).slice(2, 10);
+
+async function runSwarm() {
+  if (running) return;
+  const goal = goalInput.value.trim();
+  if (!goal) return;
+
+  addUserBubble(goal);
+  goalInput.value = '';
+  goalInput.style.height = 'auto';
+  setRunning(true);
+
+  const stepsEl = addTimelineCard();
+
+  try {
+    const response = await fetch('/v1/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ goal, thread_id: THREAD_ID }),
+    });
+    await consumeStream(response, stepsEl, THREAD_ID);
+  } catch (err) {
+    markAllError(stepsEl);
+    addErrorCard(String(err));
+  } finally {
+    setRunning(false);
+  }
+}
+
+let modelsLoaded = false;
+async function loadModels() {
+  const body = document.getElementById('models-body');
+  body.innerHTML = '<div class="placeholder-note">Loading models…</div>';
+  try {
+    const res = await fetch('/v1/models');
+    const data = await res.json();
+    modelsLoaded = true;
+
+    const stats = data.stats || {};
+    const byPurpose = Object.entries(stats.by_purpose || {});
+    let html = '<div class="stats-strip">' +
+      statTile(stats.total, 'Total') +
+      statTile(stats.local, 'Local') +
+      statTile(stats.cloud_free, 'Free cloud') +
+      '</div>';
+
+    const groups = {};
+    (data.models || []).forEach((m) => {
+      groups[m.purpose] = groups[m.purpose] || [];
+      groups[m.purpose].push(m);
+    });
+
+    Object.entries(groups).forEach(([purpose, models]) => {
+      html += '<div class="model-group"><h3>' + purpose + '</h3>';
+      models.forEach((m) => {
+        html += '<div class="model-row">' +
+          '<span class="badge ' + (m.is_local ? 'local' : 'cloud') + '">' +
+          (m.is_local ? 'LOCAL' : 'CLOUD') + '</span>' +
+          '<span class="name">' + escapeHtml(m.name) + '</span>' +
+          '<span class="meta">' + escapeHtml(m.provider) + '</span>' +
+          '</div>';
+      });
+      html += '</div>';
+    });
+
+    body.innerHTML = html || '<div class="placeholder-note">No models configured.</div>';
+  } catch (err) {
+    body.innerHTML = '<div class="placeholder-note">Could not load models: ' + escapeHtml(String(err)) + '</div>';
+  }
+}
+
+function statTile(n, label) {
+  return '<div class="stat-tile"><div class="n">' + (n ?? 0) + '</div><div class="l">' + label + '</div></div>';
+}
+
+async function loadStatus() {
+  const body = document.getElementById('status-body');
+  body.innerHTML = '<div class="placeholder-note">Loading status…</div>';
+  try {
+    const res = await fetch('/v1/status/default');
+    const data = await res.json();
+    const summary = data.blackboard_summary || {};
+
+    let html = '<div class="kv-row"><span class="k">Session ID</span><span>' +
+      escapeHtml(summary.session_id || '—') + '</span></div>';
+    html += '<div class="kv-row"><span class="k">Total keys</span><span>' +
+      (summary.total_keys ?? 0) + '</span></div>';
+    html += '<div class="kv-row"><span class="k">Total entries</span><span>' +
+      (summary.total_entries ?? 0) + '</span></div>';
+
+    const keys = summary.keys || {};
+    const entries = Object.entries(keys);
+    if (entries.length) {
+      html += '<h3 style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;' +
+        'color:var(--muted);margin:18px 0 10px;">Blackboard keys</h3>';
+      entries.forEach(([key, info]) => {
+        html += '<div class="bb-key"><div class="k-name">' + escapeHtml(key) + '</div>' +
+          '<div class="k-meta">' + (info.count ?? 0) + ' entries · agents: ' +
+          escapeHtml((info.agents || []).join(', ')) + '</div></div>';
+      });
+    } else {
+      html += '<div class="placeholder-note">No blackboard entries yet — run the swarm to populate it.</div>';
+    }
+
+    body.innerHTML = html;
+  } catch (err) {
+    body.innerHTML = '<div class="placeholder-note">Could not load status: ' + escapeHtml(String(err)) + '</div>';
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : str;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>

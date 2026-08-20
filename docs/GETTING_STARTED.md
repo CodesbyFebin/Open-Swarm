@@ -4,7 +4,7 @@ Welcome! This guide will get you running in under 5 minutes.
 
 ## Prerequisites
 
-- Python 3.10+
+- Python 3.11+ (LangGraph's human-in-the-loop `interrupt()` requires 3.11+ for async nodes)
 - Docker (for sandboxing)
 - Ollama (for local models)
 
@@ -45,8 +45,8 @@ docker-compose -f docker/docker-compose.yml up -d
 # Command line
 openswarm run "Refactor authentication to use async/await"
 
-# Terminal UI
-openswarm tui "Add rate limiting to API endpoints"
+# Terminal UI (placeholder today, no arguments yet — see ROADMAP.md)
+openswarm tui
 
 # Web dashboard
 openswarm serve
@@ -55,15 +55,16 @@ openswarm serve
 
 ## Understanding the Output
 
-Open Swarm uses a 5-stage workflow:
+Open Swarm runs a 5-stage workflow with two real approval gates in between:
 
 1. **Scout** - Explores codebase (read-only, fast model)
 2. **Planner** - Creates refactoring plan (reasoning model)
-3. **Coder** - Implements changes (coding model)
-4. **Critic** - Adversarial review (critique model)
-5. **Synthesizer** - Merges with feedback (reasoning model)
+   - **Plan gate** - the swarm pauses and asks you to approve the plan before any code is written (CLI prompt, or the dashboard's Approve/Reject card)
+3. **Coder** + **Critic** - Implements changes and adversarially reviews them, in parallel
+4. **Synthesizer** - Merges the code proposal with critic feedback
+   - **Final gate** - pauses again before the run is considered done
 
-Each stage writes to a shared blackboard, enabling agents to collaborate without direct messaging.
+Rejecting either gate aborts the run without going further. Pass `-y`/`--yes` to `openswarm run` to auto-approve both gates for scripted use. Each stage writes to a shared blackboard, enabling agents to collaborate without direct messaging.
 
 ## Configuration
 

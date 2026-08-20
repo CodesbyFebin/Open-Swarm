@@ -7,7 +7,7 @@ echo "🐝 Installing Open Swarm..."
 
 # Check Python
 if ! command -v python3 &> /dev/null; then
-    echo "Error: Python 3.10+ required"
+    echo "Error: Python 3.11+ required"
     exit 1
 fi
 

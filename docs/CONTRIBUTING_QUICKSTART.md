@@ -24,4 +24,4 @@ Welcome! These issues are perfect for first-time contributors:
 
 Open a discussion on GitHub or check docs/GETTING_STARTED.md
 
-See [GOOD_FIRST_ISSUES.md](GOOD_FIRST_ISSUES.md) for full details.
+See [GOOD_FIRST_ISSUES.md](GOOD_FIRST_ISSUES.md) for full details, or browse [open issues on GitHub](https://github.com/CodesbyFebin/Open-Swarm/issues).

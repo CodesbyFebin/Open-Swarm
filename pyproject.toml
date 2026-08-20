@@ -3,7 +3,7 @@ name = "openswarm"
 version = "0.1.0"
 description = "Parallel multi-agent coding swarm - local-first, zero-cost"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
     {name = "OpenSwarm Contributors"}
@@ -45,4 +45,6 @@ target-version = ['py311']
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
