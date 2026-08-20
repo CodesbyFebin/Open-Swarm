@@ -4,7 +4,10 @@ Tests for Open Swarm router
 
 import pytest
 import sys
-sys.path.insert(0, '/Users/cyberteck/Desktop/Bharath chat/open Swarm/src')
+from pathlib import Path
+
+# Add src to path for tests
+sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from openswarm.core.router import SwarmRouter, ModelProfile
 
