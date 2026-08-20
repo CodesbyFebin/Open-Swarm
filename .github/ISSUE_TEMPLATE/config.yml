@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability
+    url: https://github.com/CodesbyFebin/Open-Swarm/security/policy
+    about: Please report security vulnerabilities privately — see SECURITY.md, do not open a public issue.
+  - name: Roadmap & Feature Voting
+    url: https://github.com/CodesbyFebin/Open-Swarm/blob/main/ROADMAP.md
+    about: Check planned work before requesting a feature.

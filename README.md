@@ -1,26 +1,48 @@
 # Open Swarm 🐝
 
-**Parallel multi-agent coding swarm - local-first, zero-cost**
+**Parallel multi-agent coding swarm — local-first, zero-cost**
 
-Open Swarm is a production-ready design for parallel, heterogeneous multi-agent execution. It keeps the local-first, zero-cost, open-source ethos of OpenMonoAgent while adding true parallel multi-agent swarm execution.
+[![CI](https://github.com/CodesbyFebin/Open-Swarm/actions/workflows/ci.yml/badge.svg)](https://github.com/CodesbyFebin/Open-Swarm/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)](ROADMAP.md)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+Open Swarm is a local-first design for parallel, heterogeneous multi-agent coding. It keeps the local-first, zero-cost, open-source ethos of OpenMonoAgent while adding true parallel multi-agent swarm execution.
+
+**Landing page:** [open-swarm.vercel.app](https://open-swarm.vercel.app/) · **Docs:** [Architecture](docs/ARCHITECTURE.md) · [Getting Started](docs/GETTING_STARTED.md) · [Roadmap](ROADMAP.md)
+
+> **Project status:** early alpha. The router, blackboard, and orchestrator are implemented and tested; the TUI is a placeholder and cloud-provider adapters are not yet load-tested end-to-end. See [ROADMAP.md](ROADMAP.md) for what's next — contributions welcome.
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+- [Three Ways to Use It](#three-ways-to-use-it)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Overview
 
-Open Swarm enables multiple AI agents to work in parallel on complex coding tasks, with intelligent routing across multiple free/local LLMs. Agents collaborate through a shared blackboard (stigmergy pattern).
+Open Swarm enables multiple AI agents to work in parallel on complex coding tasks, with intelligent routing across multiple free/local LLMs. Agents collaborate through a shared blackboard (stigmergy pattern) instead of expensive direct messaging.
 
 ### Key Features
 
-- **Local-first + Free-tier hybrid**: Prefer local models; fall back to free cloud tiers
-- **Parallel by default**: Agents run concurrently where possible
-- **Intelligent router**: Lightweight LLM router decides which models handle each sub-task
-- **Sandbox + Permission model**: Docker isolation with human gates
-- **Open & composable**: Python core with MCP support and playbook workflows
+- **Local-first + free-tier hybrid**: prefer local Ollama models; fall back to free cloud tiers automatically
+- **Parallel by default**: agents run concurrently where possible
+- **Intelligent router**: lightweight heuristic router decides which models handle each sub-task, with rate-limit-aware fallback chains
+- **Sandbox + permission model**: Docker isolation with human approval gates
+- **Open & composable**: Python core with playbook workflows and MCP support on the roadmap
 
 ## Quick Start
 
 ```bash
 # Clone and install
-cd open-swarm
+git clone https://github.com/CodesbyFebin/Open-Swarm.git
+cd Open-Swarm
 python -m venv .venv && source .venv/bin/activate
 pip install -e .
 
@@ -34,6 +56,8 @@ openswarm run "Refactor authentication to use async/await"
 openswarm serve
 # → http://localhost:8000/dashboard
 ```
+
+For a step-by-step walkthrough, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
 
 ## Architecture
 
@@ -49,6 +73,29 @@ Shared Blackboard
 Synthesis → Human Gate → Execute
 ```
 
+Full design notes, swarm patterns, and data flow live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Three Ways to Use It
+
+| Interface | Command | Notes |
+|---|---|---|
+| ⚡ CLI | `openswarm run "your goal"` | Scriptable, CI-friendly |
+| 🌐 Dashboard | `openswarm serve` → `http://localhost:8000/dashboard` | Live SSE stream of swarm progress |
+| 🖥️ TUI | `openswarm tui` | Placeholder today — multi-panel view is on the [roadmap](ROADMAP.md) |
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) — design principles, core components, swarm patterns
+- [Getting Started](docs/GETTING_STARTED.md) — installation and first run
+- [Good First Issues](docs/GOOD_FIRST_ISSUES.md) — curated starter tasks
+- [Contributing Quick Start](docs/CONTRIBUTING_QUICKSTART.md) — condensed contributor guide
+- [Roadmap](ROADMAP.md) — what's shipped, in progress, and planned
+- [Security Policy](SECURITY.md) — supported versions and how to report a vulnerability
+
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup, style, and PR process, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community guidelines. Good first issues are labeled [`good first issue`](https://github.com/CodesbyFebin/Open-Swarm/labels/good%20first%20issue) on GitHub.
+
 ## License
 
-MIT License - Open source, zero-cost, local-first
+MIT License — open source, zero-cost, local-first. See [LICENSE](LICENSE).
