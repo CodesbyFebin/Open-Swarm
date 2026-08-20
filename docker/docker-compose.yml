@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  # Ollama for local inference
+  ollama:
+    image: ollama/ollama:latest
+    container_name: openswarm-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # LiteLLM proxy for model routing
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: openswarm-litellm
+    ports:
+      - "4000:4000"
+    environment:
+      - LITELLM_LOG_LEVEL=INFO
+      - MASTER_KEY=sk-open-swarm
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml
+    restart: unless-stopped
+    depends_on:
+      - ollama
+
+  # Open Swarm API
+  openswarm:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+    container_name: openswarm-api
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - LITELLM_HOST=http://litellm:4000
+      - WORKSPACE_PATH=/workspace
+    volumes:
+      - ./workspace:/workspace
+      - ../config:/app/config
+    restart: unless-stopped
+    depends_on:
+      - ollama
+      - litellm
+
+  # SearXNG for private web search
+  searxng:
+    image: searxng/searxng:latest
+    container_name: openswarm-searxng
+    ports:
+      - "8080:8080"
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080
+    restart: unless-stopped
+    depends_on:
+      - openswarm
+
+volumes:
+  ollama_models:

@@ -1,0 +1,177 @@
+# Open Swarm Playbook: Coding Refactor
+# Full Scout→Planner→Coder→Critic→Synthesizer workflow
+
+name: coding_refactor
+version: 1.0.0
+description: Comprehensive code refactoring with parallel exploration, planning, and verification
+
+metadata:
+  author: OpenSwarm
+  created: 2026-08-20
+  tags: [coding, refactor, verification, parallel]
+
+orchestration:
+  graph_type: LangGraph
+  parallel_nodes:
+    - scout_and_planner_parallel
+    - coder_and_critic_parallel
+  
+  human_gates:
+    - after_planner
+    - after_synthesizer
+
+initialization:
+  required_context:
+    - workspace_path
+    - target_files: optional
+    - refactor_goals: required
+  setup_tasks:
+    - validate_workspace
+    - load_playbook
+    - initialize_blackboard
+
+nodes:
+  scout:
+    agent_type: scout
+    model_purpose: fast
+    description: Exploratory codebase analysis
+    tools:
+      - read_file
+      - grep
+      - list_directory
+    output:
+      - files_discovered
+      - code_patterns
+      - dependencies_mapped
+    timeout_seconds: 120
+    parallel: true
+
+  planner:
+    agent_type: planner
+    model_purpose: reasoning
+    description: Create refactoring plan from scout findings
+    tools:
+      - read_file
+      - code_analysis
+    input_from:
+      - scout.files_discovered
+      - scout.code_patterns
+    output:
+      - refactoring_steps
+      - affected_files
+      - risk_assessment
+      - estimated_complexity
+    requires_approval: true
+
+  coder:
+    agent_type: coder
+    model_purpose: coding
+    description: Implement refactoring changes
+    tools:
+      - read_file
+      - write_file
+      - execute_command
+    input_from:
+      - planner.refactoring_steps
+      - planner.affected_files
+    output:
+      - code_changes
+      - patch_files
+      - migration_guide
+    timeout_seconds: 300
+    parallel: true
+
+  critic:
+    agent_type: critic
+    model_purpose: critique
+    description: Adversarial review of refactoring
+    tools:
+      - read_file
+      - code_analysis
+      - run_tests
+    input_from:
+      - coder.code_changes
+      - planner.risk_assessment
+    output:
+      - issues_found
+      - test_recommendations
+      - security_concerns
+    parallel: true
+
+  synthesizer:
+    agent_type: synthesizer
+    model_purpose: reasoning
+    description: Merge changes with critic feedback
+    tools:
+      - read_file
+      - merge_files
+    input_from:
+      - coder.code_changes
+      - critic.issues_found
+      - critic.test_recommendations
+    output:
+      - refined_changes
+      - final_patch
+      - verification_report
+    requires_approval: true
+
+edges:
+  - from: scout
+    to: planner
+  - from: planner
+    to: [coder, critic]
+    condition: planner.approved
+  - from: coder
+    to: synthesizer
+  - from: critic
+    to: synthesizer
+  - from: synthesizer
+    to: end
+    condition: synthesizer.approved
+
+stigmergy:
+  blackboard_enabled: true
+  shared_memory_keys:
+    - scout_findings
+    - planner_decisions
+    - coder_outputs
+    - critic_feedback
+    - synthesized_results
+
+safety:
+  sandbox_enabled: true
+  read_only_agents:
+    - scout
+    - critic
+  write_agents:
+    - coder
+    - synthesizer
+  require_human_approval_for:
+    - file_write_operations
+    - code_execution
+    - final_commit
+
+monitoring:
+  stream_events: true
+  log_all_messages: true
+  track_token_usage: true
+  track_model_switches: true
+
+templates:
+  task_description: |
+    Refactor the codebase to: {refactor_goals}
+    
+    Target files: {target_files}
+    
+    Please:
+    1. Explore the codebase to understand current structure
+    2. Plan the refactoring steps with risks identified
+    3. Implement changes safely
+    4. Verify through adversarial review
+    5. Synthesize final results
+
+  success_criteria:
+    - All planned changes implemented
+    - Tests pass or test plan provided
+    - No critical issues from critic
+    - Human approval obtained

@@ -1,0 +1,133 @@
+# Open Swarm Model Configuration
+# Local-first + free-tier hybrid model pool
+
+models:
+  # Fast Scout / Exploration
+  - name: ollama/qwen2.5-coder:3b
+    provider: ollama
+    purpose: fast
+    is_local: true
+    max_tokens: 4000
+    rate_limit_cooldown: 0
+    fallback_to: ollama/phi-4:3.8b
+    
+  - name: ollama/phi-4:3.8b
+    provider: ollama
+    purpose: fast
+    is_local: true
+    max_tokens: 4000
+    rate_limit_cooldown: 0
+    fallback_to: cerebras/llama-3.1-8b
+
+  # Cloud fast tier
+  - name: cerebras/llama-3.1-8b
+    provider: cerebras
+    purpose: fast
+    is_local: false
+    max_tokens: 4000
+    rate_limit_cooldown: 60
+    free_tier: true
+
+  # Reasoning / Planner
+  - name: ollama/qwen3:8b
+    provider: ollama
+    purpose: reasoning
+    is_local: true
+    max_tokens: 8000
+    rate_limit_cooldown: 0
+    fallback_to: ollama/deepseek-r1:8b
+
+  - name: ollama/deepseek-r1:8b
+    provider: ollama
+    purpose: reasoning
+    is_local: true
+    max_tokens: 8000
+    rate_limit_cooldown: 0
+    fallback_to: groq/llama-3.3-70b-versatile
+
+  - name: groq/llama-3.3-70b-versatile
+    provider: groq
+    purpose: reasoning
+    is_local: false
+    max_tokens: 8000
+    rate_limit_cooldown: 60
+    free_tier: true
+
+  # Coding Specialist
+  - name: ollama/qwen2.5-coder:14b
+    provider: ollama
+    purpose: coding
+    is_local: true
+    max_tokens: 8000
+    rate_limit_cooldown: 0
+    fallback_to: ollama/qwen3-coder:14b
+
+  - name: ollama/qwen3-coder:14b
+    provider: ollama
+    purpose: coding
+    is_local: true
+    max_tokens: 8000
+    rate_limit_cooldown: 0
+    fallback_to: openrouter/deepseek/deepseek-v3
+
+  - name: openrouter/deepseek/deepseek-v3
+    provider: openrouter
+    purpose: coding
+    is_local: false
+    max_tokens: 8000
+    rate_limit_cooldown: 60
+    free_tier: true
+
+  # Critic / Verifier
+  - name: ollama/deepseek-r1:14b
+    provider: ollama
+    purpose: critique
+    is_local: true
+    max_tokens: 8000
+    rate_limit_cooldown: 0
+    fallback_to: ollama/llama-3.1:8b
+
+  - name: ollama/llama-3.1:8b
+    provider: ollama
+    purpose: critique
+    is_local: true
+    max_tokens: 8000
+    rate_limit_cooldown: 0
+    fallback_to: openrouter/google/gemini-2.0-flash-exp
+
+  - name: openrouter/google/gemini-2.0-flash-exp
+    provider: openrouter
+    purpose: critique
+    is_local: false
+    max_tokens: 8000
+    rate_limit_cooldown: 60
+    free_tier: true
+
+router:
+  # Heuristics for task routing
+  strategy: hybrid
+  default_local: true
+  enable_rate_limit_awareness: true
+  max_retries: 3
+  fallback_on_429: true
+  
+  # Purpose mapping
+  purpose_mapping:
+    exploration: fast
+    coding: coding
+    architecture: reasoning
+    testing: critique
+    optimization: reasoning
+    documentation: fast
+
+  # Complexity thresholds
+  complexity:
+    low:
+      max_tokens: 1000
+      preferred_purpose: fast
+    medium:
+      max_tokens: 4000
+      preferred_purpose: coding
+    high:
+      max_tokens: 8000
+      preferred_purpose: reasoning

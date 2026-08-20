@@ -1,0 +1,127 @@
+# Open Swarm Permissions and Sandbox Rules
+# Inherit Docker isolation and human gates from OpenMono
+
+sandbox:
+  # Container configuration
+  default_image: openswarm/agent:latest
+  workspace_mount:
+    path: /workspace
+    host_path: ${WORKSPACE_PATH}
+    read_only_for:
+      - scout
+      - critic
+    read_write_for:
+      - coder
+      - synthesizer
+  
+  # Resource limits
+  memory_limit: 2g
+  cpu_limit: 2.0
+  timeout_seconds: 300
+  
+  # Network access
+  network_allowed:
+    - scout: false  # Read-only, no network
+    - planner: false
+    - coder: false
+    - critic: true   # May need web search
+    - synthesizer: false
+
+  # File system restrictions
+  allowed_paths:
+    - /workspace
+    - /tmp
+  forbidden_paths:
+    - /etc
+    - /root
+    - /home
+    - /var
+    - /proc
+    - /sys
+
+approval:
+  # Human-in-the-loop gates
+  require_approval_for:
+    - destructive_operations: true
+    - file_write_outside_workspace: true
+    - docker_operations: true
+    - model_switch_to_cloud: false
+    - execution_timeout_exceed: true
+  
+  # Destructive operations
+  destructive_operations:
+    - file_delete
+    - file_overwrite
+    - directory_remove
+    - git_commit
+    - database_migrate
+  
+  # Auto-approve scope
+  auto_approve:
+    - file_read
+    - file_create_in_workspace
+    - search_operations
+  
+  # Approval timeout
+  approval_timeout_minutes: 10
+
+agents:
+  # Agent-specific tool permissions
+  scout:
+    tools_allowed:
+      - read_file
+      - grep
+      - list_directory
+      - web_search
+    tools_denied:
+      - write_file
+      - execute_command
+      - docker_operations
+  
+  planner:
+    tools_allowed:
+      - read_file
+      - list_directory
+      - code_analysis
+    tools_denied:
+      - write_file
+      - execute_command
+  
+  coder:
+    tools_allowed:
+      - read_file
+      - write_file
+      - execute_command
+      - git_operations
+    requires_approval_for:
+      - file_delete
+      - execute_command
+  
+  critic:
+    tools_allowed:
+      - read_file
+      - code_analysis
+      - web_search
+      - run_tests
+    tools_denied:
+      - write_file
+      - execute_command
+  
+  synthesizer:
+    tools_allowed:
+      - read_file
+      - merge_files
+      - git_operations
+    requires_approval_for:
+      - file_delete
+      - git_commit
+
+logging:
+  # Audit trail for all operations
+  log_level: INFO
+  log_destructive_ops: true
+  log_model_switches: true
+  log_approval_events: true
+  
+  # Retention
+  retention_days: 30
