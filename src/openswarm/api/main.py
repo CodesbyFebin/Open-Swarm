@@ -7,9 +7,10 @@ import asyncio
 import json
 from collections.abc import AsyncGenerator
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 from ..core.blackboard import get_blackboard
@@ -19,6 +20,8 @@ from ..core.router import get_router
 app = FastAPI(
     title="Open Swarm API", description="Parallel multi-agent coding swarm API", version="0.1.0"
 )
+
+DASHBOARD_HTML_PATH = Path(__file__).resolve().parent.parent / "ui" / "dashboard.html"
 
 
 class RunRequest(BaseModel):
@@ -160,98 +163,8 @@ async def list_models():
 
 @app.get("/dashboard")
 async def dashboard():
-    """Serve dashboard HTML"""
-    html = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Open Swarm Dashboard</title>
-    <style>
-        body { font-family: monospace; margin: 20px; background: #1e1e1e; color: #fff; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        .header { font-size: 24px; margin-bottom: 20px; }
-        .panel { background: #2d2d2d; padding: 15px; margin: 10px 0; border-radius: 5px; }
-        .log { background: #000; padding: 10px; height: 300px; overflow-y: scroll; font-size: 12px }
-        input, button { padding: 8px; margin: 5px; }
-        button { background: #007acc; color: white; border: none; cursor: pointer; }
-        button:hover { background: #005a9e; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">🐝 Open Swarm Dashboard</div>
-
-        <div class="panel">
-            <h3>Run Swarm</h3>
-            <input type="text" id="goal" placeholder="Enter your goal..." style="width: 70%">
-            <button onclick="runSwarm()">Run</button>
-        </div>
-
-        <div class="panel">
-            <h3>Live Stream</h3>
-            <div class="log" id="log"></div>
-        </div>
-
-        <div class="panel">
-            <h3>Models</h3>
-            <button onclick="loadModels()">Load Models</button>
-            <div id="models"></div>
-        </div>
-    </div>
-
-    <script>
-        const log = document.getElementById('log');
-
-        function logMessage(msg) {
-            log.innerHTML += msg + '<br>';
-            log.scrollTop = log.scrollHeight;
-        }
-
-        async function runSwarm() {
-            const goal = document.getElementById('goal').value;
-            if (!goal) return;
-
-            log.innerHTML = '';
-            logMessage('Starting swarm: ' + goal);
-
-            const response = await fetch('/v1/stream', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({goal: goal})
-            });
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-
-            while (true) {
-                const {done, value} = await reader.read();
-                if (done) break;
-
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\\n');
-
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const data = JSON.parse(line.slice(6));
-                        logMessage(JSON.stringify(data, null, 2));
-                    }
-                }
-            }
-        }
-
-        async function loadModels() {
-            const response = await fetch('/v1/models');
-            const data = await response.json();
-            document.getElementById('models').innerHTML =
-                '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
-        }
-    </script>
-</body>
-</html>
-    """
-    from fastapi.responses import HTMLResponse
-
-    return HTMLResponse(content=html)
+    """Serve the mobile-app-style Open Swarm dashboard"""
+    return HTMLResponse(content=DASHBOARD_HTML_PATH.read_text())
 
 
 if __name__ == "__main__":

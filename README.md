@@ -80,7 +80,7 @@ Full design notes, swarm patterns, and data flow live in [docs/ARCHITECTURE.md](
 | Interface | Command | Notes |
 |---|---|---|
 | ⚡ CLI | `openswarm run "your goal"` | Scriptable, CI-friendly |
-| 🌐 Dashboard | `openswarm serve` → `http://localhost:8000/dashboard` | Live SSE stream of swarm progress |
+| 📱 Dashboard | `openswarm serve` → `http://localhost:8000/dashboard` | Mobile-first chat UI with a live agent timeline, streamed over SSE |
 | 🖥️ TUI | `openswarm tui` | Placeholder today — multi-panel view is on the [roadmap](ROADMAP.md) |
 
 ## Documentation
