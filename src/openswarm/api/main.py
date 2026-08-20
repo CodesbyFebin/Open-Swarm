@@ -1,9 +1,8 @@
 """
 Open Swarm FastAPI Server
-SSE streaming API with live dashboard
+SSE streaming API with live dashboard and real human-in-the-loop approval gates
 """
 
-import asyncio
 import json
 from collections.abc import AsyncGenerator
 from datetime import datetime
@@ -14,7 +13,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 from ..core.blackboard import get_blackboard
-from ..core.orchestrator import SwarmOrchestrator
+from ..core.orchestrator import get_orchestrator
 from ..core.router import get_router
 
 app = FastAPI(
@@ -23,17 +22,36 @@ app = FastAPI(
 
 DASHBOARD_HTML_PATH = Path(__file__).resolve().parent.parent / "ui" / "dashboard.html"
 
+# Nodes that represent visible run stages in the client timeline. The two
+# approval gates (plan_gate, final_gate) are deliberately excluded here: they
+# surface as their own "awaiting_approval" event instead of a stage update.
+STAGE_MESSAGES = {
+    "scout": "Exploring codebase",
+    "planner": "Creating plan",
+    "workers": "Running coder and critic",
+    "synthesizer": "Synthesizing results",
+}
+
 
 class RunRequest(BaseModel):
-    goal: str
+    goal: str | None = None
     playbook: str | None = None
     thread_id: str | None = "default"
+    resume: dict | None = None
 
 
 class ApprovalRequest(BaseModel):
     thread_id: str
     approve: bool
     reason: str | None = None
+
+
+def _now() -> str:
+    return datetime.now().isoformat()
+
+
+def _sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload)}\n\n"
 
 
 @app.get("/")
@@ -48,68 +66,107 @@ async def root():
 
 @app.post("/v1/run")
 async def run_swarm(request: RunRequest):
-    """Run a swarm workflow synchronously"""
-    orchestrator = SwarmOrchestrator()
-    result = await orchestrator.run_swarm(request.goal, {"thread_id": request.thread_id})
+    """Run a swarm workflow synchronously up to its first approval gate (or
+    completion, if there is nothing to approve)."""
+    orchestrator = get_orchestrator()
 
-    if result.get("success"):
-        return {"status": "completed", "thread_id": request.thread_id, "result": result}
+    if request.resume is not None:
+        result = await orchestrator.resume_swarm(
+            request.thread_id or "default",
+            approved=bool(request.resume.get("approved")),
+            reason=request.resume.get("reason"),
+        )
     else:
+        if not request.goal:
+            raise HTTPException(status_code=400, detail="goal is required to start a run")
+        result = await orchestrator.run_swarm(request.goal, {"thread_id": request.thread_id})
+
+    if result.get("status") == "error":
         raise HTTPException(status_code=500, detail=result.get("error"))
+
+    return {"thread_id": request.thread_id, **result}
 
 
 @app.post("/v1/stream")
 async def stream_swarm(request: RunRequest) -> StreamingResponse:
-    """Stream swarm execution via Server-Sent Events"""
+    """Stream swarm execution via Server-Sent Events.
+
+    A fresh run is started when `goal` is set; passing `resume` instead
+    continues a run that's paused at an approval gate, on the same
+    `thread_id`. Either way, real per-node LangGraph updates are streamed
+    as they happen — nothing here is simulated or pre-scripted.
+    """
+    thread_id = request.thread_id or "default"
 
     async def event_generator() -> AsyncGenerator[str, None]:
+        orchestrator = get_orchestrator()
         try:
-            # Initial connection event
-            connected = {"type": "connected", "thread_id": request.thread_id}
-            yield f"data: {json.dumps(connected)}\n\n"
+            yield _sse({"type": "connected", "thread_id": thread_id})
 
-            # Simulate streaming events
-            started = {
-                "type": "started",
-                "goal": request.goal,
-                "timestamp": datetime.now().isoformat(),
-            }
-            yield f"data: {json.dumps(started)}\n\n"
+            if request.resume is not None:
+                node_stream = orchestrator.stream_resume(
+                    thread_id,
+                    approved=bool(request.resume.get("approved")),
+                    reason=request.resume.get("reason"),
+                )
+            else:
+                if not request.goal:
+                    yield _sse({"type": "error", "error": "goal is required to start a run"})
+                    return
+                yield _sse({"type": "started", "goal": request.goal, "timestamp": _now()})
+                node_stream = orchestrator.stream_swarm(request.goal, thread_id)
 
-            # Stream workflow progress
-            orchestrator = SwarmOrchestrator()
+            async for update in node_stream:
+                if "__interrupt__" in update:
+                    payload = update["__interrupt__"][0].value
+                    yield _sse(
+                        {
+                            "type": "awaiting_approval",
+                            "gate": payload.get("gate"),
+                            "message": payload.get("message"),
+                            "payload": payload,
+                            "timestamp": _now(),
+                        }
+                    )
+                    return
 
-            # For demo, simulate progress
-            stages = [
-                ("scout", "Exploring codebase"),
-                ("planner", "Creating plan"),
-                ("workers", "Running coder and critic"),
-                ("synthesizer", "Synthesizing results"),
-            ]
+                for node_name in update:
+                    if node_name not in STAGE_MESSAGES:
+                        continue
+                    yield _sse(
+                        {
+                            "type": "stage",
+                            "stage": node_name,
+                            "message": STAGE_MESSAGES[node_name],
+                            "timestamp": _now(),
+                        }
+                    )
 
-            for stage, message in stages:
-                stage_event = {
-                    "type": "stage",
-                    "stage": stage,
-                    "message": message,
-                    "timestamp": datetime.now().isoformat(),
-                }
-                yield f"data: {json.dumps(stage_event)}\n\n"
-                await asyncio.sleep(0.5)
-
-            # Final result
-            result = await orchestrator.run_swarm(request.goal, {"thread_id": request.thread_id})
-
-            completed = {
-                "type": "completed",
-                "result": result,
-                "timestamp": datetime.now().isoformat(),
-            }
-            yield f"data: {json.dumps(completed)}\n\n"
+            # Stream ended without an interrupt: the run finished (or was
+            # rejected at a gate, which also routes straight to END).
+            final_values = await orchestrator.get_final_state(thread_id)
+            if final_values.get("aborted"):
+                yield _sse(
+                    {
+                        "type": "aborted",
+                        "reason": final_values.get("abort_reason") or "Run aborted",
+                        "timestamp": _now(),
+                    }
+                )
+            else:
+                yield _sse(
+                    {
+                        "type": "completed",
+                        "result": {
+                            "success": True,
+                            "final_output": final_values.get("final_output", ""),
+                        },
+                        "timestamp": _now(),
+                    }
+                )
 
         except Exception as e:
-            error_event = {"type": "error", "error": str(e)}
-            yield f"data: {json.dumps(error_event)}\n\n"
+            yield _sse({"type": "error", "error": str(e)})
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -123,20 +180,22 @@ async def get_status(thread_id: str):
     return {
         "thread_id": thread_id,
         "blackboard_summary": summary,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": _now(),
     }
 
 
 @app.post("/v1/approve")
 async def approve_workflow(request: ApprovalRequest):
-    """Approve a workflow that requires human intervention"""
-    # In production, would resume LangGraph execution
-    return {
-        "status": "approved" if request.approve else "rejected",
-        "thread_id": request.thread_id,
-        "reason": request.reason,
-        "timestamp": datetime.now().isoformat(),
-    }
+    """Resume a workflow paused at a human approval gate (non-streaming)."""
+    orchestrator = get_orchestrator()
+    result = await orchestrator.resume_swarm(
+        request.thread_id, approved=request.approve, reason=request.reason
+    )
+
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result.get("error"))
+
+    return {"thread_id": request.thread_id, **result}
 
 
 @app.get("/v1/models")

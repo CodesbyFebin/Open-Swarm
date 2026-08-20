@@ -1,6 +1,6 @@
 """
 Open Swarm Orchestrator
-LangGraph-based swarm execution with parallel agents and human-in-the-loop
+LangGraph-based swarm execution with parallel agents and real human-in-the-loop gates
 """
 
 import asyncio
@@ -9,22 +9,32 @@ from typing import Any, TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
+from langgraph.types import Command, interrupt
 
 from .blackboard import get_blackboard
 from .router import get_router, route_task
 
 
-# Shared State (Blackboard)
 class SwarmState(TypedDict):
     goal: str
     plan: str
     code_proposals: list[str]
     critique_reports: list[str]
     final_output: str
-    requires_human_approval: bool
+    plan_approved: bool
+    final_approved: bool
+    aborted: bool
+    abort_reason: str
     workflow_stage: str
     agent_outputs: dict[str, Any]
     metadata: dict[str, Any]
+
+
+def _decide(payload: Any) -> tuple[bool, str | None]:
+    """Normalize a Command(resume=...) payload into (approved, reason)."""
+    if isinstance(payload, dict):
+        return bool(payload.get("approved")), payload.get("reason")
+    return bool(payload), None
 
 
 class SwarmOrchestrator:
@@ -34,23 +44,30 @@ class SwarmOrchestrator:
         self.workflow = self._build_workflow()
 
     def _build_workflow(self):
-        """Build LangGraph workflow"""
+        """Build the LangGraph workflow: Scout -> Planner -> [gate] -> Workers ->
+        Synthesizer -> [gate] -> END. Both gates are real `interrupt()` pauses,
+        not simulated ones — the graph genuinely stops and waits to be resumed."""
         builder = StateGraph(SwarmState)
 
-        # Add nodes
         builder.add_node("scout", self.scout_node)
         builder.add_node("planner", self.planner_node)
+        builder.add_node("plan_gate", self.plan_gate_node)
         builder.add_node("workers", self.parallel_worker_node)
         builder.add_node("synthesizer", self.synthesizer_node)
+        builder.add_node("final_gate", self.final_gate_node)
 
-        # Define edges
         builder.set_entry_point("scout")
         builder.add_edge("scout", "planner")
-        builder.add_edge("planner", "workers")
+        builder.add_edge("planner", "plan_gate")
+        builder.add_conditional_edges(
+            "plan_gate",
+            lambda s: "continue" if s.get("plan_approved") else "abort",
+            {"continue": "workers", "abort": END},
+        )
         builder.add_edge("workers", "synthesizer")
-        builder.add_edge("synthesizer", END)
+        builder.add_edge("synthesizer", "final_gate")
+        builder.add_edge("final_gate", END)
 
-        # Compile with checkpointing
         memory = MemorySaver()
         return builder.compile(checkpointer=memory)
 
@@ -104,8 +121,29 @@ class SwarmOrchestrator:
         # Write to blackboard
         self.blackboard.write(agent_id=agent_id, agent_type="planner", key="plan", value=plan)
 
-        # Human gate
-        return {"plan": plan, "requires_human_approval": True, "workflow_stage": "planner_complete"}
+        return {"plan": plan, "workflow_stage": "planner_complete"}
+
+    async def plan_gate_node(self, state: SwarmState) -> dict[str, Any]:
+        """Human gate: pause before any code is written. This is a real LangGraph
+        `interrupt()` — execution genuinely stops here until resumed with a
+        `Command(resume={"approved": bool, "reason": str | None})`."""
+        decision = interrupt(
+            {
+                "type": "approval",
+                "gate": "plan",
+                "message": "Approve this plan before the swarm starts coding?",
+                "plan": state["plan"],
+            }
+        )
+        approved, reason = _decide(decision)
+        if not approved:
+            return {
+                "plan_approved": False,
+                "aborted": True,
+                "abort_reason": reason or "Plan rejected by reviewer",
+                "workflow_stage": "aborted_at_plan",
+            }
+        return {"plan_approved": True, "workflow_stage": "plan_approved"}
 
     async def parallel_worker_node(self, state: SwarmState) -> dict[str, Any]:
         """Parallel coder and critic execution"""
@@ -208,74 +246,155 @@ Ready for implementation."""
             agent_id=agent_id, agent_type="synthesizer", key="final_output", value=final_output
         )
 
+        return {"final_output": final_output, "workflow_stage": "synthesizer_complete"}
+
+    async def final_gate_node(self, state: SwarmState) -> dict[str, Any]:
+        """Human gate: pause before the run is considered done. Also a real
+        `interrupt()` pause — see plan_gate_node."""
+        decision = interrupt(
+            {
+                "type": "approval",
+                "gate": "final",
+                "message": "Approve the final synthesized output?",
+                "final_output": state["final_output"],
+            }
+        )
+        approved, reason = _decide(decision)
         return {
-            "final_output": final_output,
-            "requires_human_approval": True,
-            "workflow_stage": "complete",
+            "final_approved": approved,
+            "aborted": not approved,
+            "abort_reason": "" if approved else (reason or "Final output rejected by reviewer"),
+            "workflow_stage": "complete" if approved else "aborted_at_final",
         }
 
-    async def run_swarm(self, goal: str, config: dict | None = None) -> dict[str, Any]:
-        """
-        Run swarm workflow with optional human-in-the-loop
-        """
-        initial_state = {
+    @staticmethod
+    def _interpret(result_state: dict[str, Any]) -> dict[str, Any]:
+        """Turn a raw graph result (from ainvoke) into an API-friendly status dict."""
+        interrupts = result_state.get("__interrupt__")
+        if interrupts:
+            payload = interrupts[0].value
+            return {
+                "status": "awaiting_approval",
+                "success": True,
+                "gate": payload.get("gate"),
+                "message": payload.get("message"),
+                "payload": payload,
+                "plan": result_state.get("plan", ""),
+            }
+        if result_state.get("aborted"):
+            return {
+                "status": "aborted",
+                "success": False,
+                "error": result_state.get("abort_reason") or "Swarm run aborted",
+                "plan": result_state.get("plan", ""),
+            }
+        return {
+            "status": "completed",
+            "success": True,
+            "final_output": result_state.get("final_output", ""),
+            "plan": result_state.get("plan", ""),
+            "workflow_stage": result_state.get("workflow_stage", "unknown"),
+        }
+
+    @staticmethod
+    def _initial_state(goal: str) -> SwarmState:
+        return {
             "goal": goal,
             "plan": "",
             "code_proposals": [],
             "critique_reports": [],
             "final_output": "",
-            "requires_human_approval": False,
+            "plan_approved": False,
+            "final_approved": False,
+            "aborted": False,
+            "abort_reason": "",
             "workflow_stage": "start",
             "agent_outputs": {},
-            "metadata": {"start_time": datetime.now().isoformat(), "session_id": str(id(self))},
+            "metadata": {"start_time": datetime.now().isoformat()},
         }
 
+    async def run_swarm(self, goal: str, config: dict | None = None) -> dict[str, Any]:
+        """Start (or restart) a swarm run for a goal. Pauses at the first
+        approval gate — call resume_swarm() with the same thread_id to continue."""
         thread_id = config.get("thread_id", "default") if config else "default"
+        run_config = {"configurable": {"thread_id": thread_id}}
 
         try:
-            # Stream events
-            async for event in self.workflow.astream(
-                initial_state, {"configurable": {"thread_id": thread_id}}
-            ):
-                print(f"[Swarm] Event: {list(event.keys())}")
-
-                # Check for human approval requirement
-                if event.get("planner", {}).get("requires_human_approval"):
-                    print("\n[Swarm] HALT: Planner requires human approval")
-                    # In production, would pause and wait for approval
-                    # For now, auto-approve in demo mode
-                    print("[Swarm] Auto-approving for demo...")
-                    continue
-
-                if event.get("synthesizer", {}).get("requires_human_approval"):
-                    print("\n[Swarm] HALT: Synthesizer requires human approval")
-                    print("[Swarm] Auto-approving for demo...")
-                    continue
-
-            # Get final state
-            final_state = await self.workflow.aget_state({"configurable": {"thread_id": thread_id}})
-
-            return {
-                "success": True,
-                "final_output": final_state.values.get("final_output", ""),
-                "plan": final_state.values.get("plan", ""),
-                "workflow_stage": final_state.values.get("workflow_stage", "unknown"),
-            }
-
+            result_state = await self.workflow.ainvoke(self._initial_state(goal), run_config)
+            return self._interpret(result_state)
         except Exception as e:
             print(f"[Swarm] Error: {e}")
-            return {"success": False, "error": str(e)}
+            return {"status": "error", "success": False, "error": str(e)}
+
+    async def resume_swarm(
+        self, thread_id: str, approved: bool, reason: str | None = None
+    ) -> dict[str, Any]:
+        """Resume a paused swarm run at its current approval gate."""
+        run_config = {"configurable": {"thread_id": thread_id}}
+        try:
+            result_state = await self.workflow.ainvoke(
+                Command(resume={"approved": approved, "reason": reason}), run_config
+            )
+            return self._interpret(result_state)
+        except Exception as e:
+            print(f"[Swarm] Error: {e}")
+            return {"status": "error", "success": False, "error": str(e)}
+
+    async def stream_swarm(self, goal: str, thread_id: str = "default"):
+        """Async-yield raw LangGraph per-node updates for a fresh run (see
+        `stream_mode="updates"` in the LangGraph docs). Each item is either
+        `{node_name: node_output}` or `{"__interrupt__": (Interrupt(...),)}`
+        when the graph pauses at a gate."""
+        run_config = {"configurable": {"thread_id": thread_id}}
+        async for update in self.workflow.astream(
+            self._initial_state(goal), run_config, stream_mode="updates"
+        ):
+            yield update
+
+    async def stream_resume(self, thread_id: str, approved: bool, reason: str | None = None):
+        """Async-yield raw LangGraph per-node updates while resuming a run
+        that's paused at an approval gate. Same item shape as stream_swarm()."""
+        run_config = {"configurable": {"thread_id": thread_id}}
+        async for update in self.workflow.astream(
+            Command(resume={"approved": approved, "reason": reason}),
+            run_config,
+            stream_mode="updates",
+        ):
+            yield update
+
+    async def get_final_state(self, thread_id: str) -> dict[str, Any]:
+        """Read back the full state values for a thread (used after a stream
+        ends without an interrupt, to report the final result)."""
+        run_config = {"configurable": {"thread_id": thread_id}}
+        state = await self.workflow.aget_state(run_config)
+        return state.values
 
 
-# Convenience function
-async def run_swarm_workflow(goal: str) -> dict[str, Any]:
-    """Run a swarm workflow for a given goal"""
-    orchestrator = SwarmOrchestrator()
-    return await orchestrator.run_swarm(goal)
+# Singleton orchestrator instance. This matters beyond convenience: the
+# LangGraph checkpointer (MemorySaver) that makes gates resumable lives on
+# the instance, so a fresh SwarmOrchestrator() per request would silently
+# lose all paused runs.
+_orchestrator_instance: SwarmOrchestrator | None = None
+
+
+def get_orchestrator() -> SwarmOrchestrator:
+    """Get or create the orchestrator singleton."""
+    global _orchestrator_instance
+    if _orchestrator_instance is None:
+        _orchestrator_instance = SwarmOrchestrator()
+    return _orchestrator_instance
+
+
+async def run_swarm_workflow(goal: str, thread_id: str = "default") -> dict[str, Any]:
+    """Run a swarm workflow for a given goal, auto-approving both gates.
+    For scripted/non-interactive use; the API exposes the real gates directly."""
+    orchestrator = get_orchestrator()
+    result = await orchestrator.run_swarm(goal, {"thread_id": thread_id})
+    while result.get("status") == "awaiting_approval":
+        result = await orchestrator.resume_swarm(thread_id, approved=True)
+    return result
 
 
 if __name__ == "__main__":
-    import asyncio
-
     result = asyncio.run(run_swarm_workflow("Refactor authentication to use async/await"))
     print(f"\nResult: {result}")

@@ -141,6 +141,17 @@
   .error-card { border-color: rgba(239,68,68,0.4); }
   .error-card .card-title { color: var(--err); }
 
+  .approval-card { border-color: rgba(245,158,11,0.4); }
+  .approval-card .card-title { color: var(--accent); }
+  .approval-detail {
+    white-space: pre-wrap; word-break: break-word; font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 12.5px; color: #ddd; margin: 0 0 12px; max-height: 220px; overflow-y: auto;
+  }
+  .approval-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .approve-btn { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  .reject-btn { color: var(--err); border-color: rgba(239,68,68,0.3); }
+  .decision-label { font-size: 12px; color: var(--muted); font-weight: 600; }
+
   /* Composer */
   .composer {
     flex: 0 0 auto;
@@ -441,6 +452,104 @@ function addErrorCard(message) {
   scrollThreadToBottom();
 }
 
+function addAbortedCard(reason) {
+  const row = document.createElement('div');
+  row.className = 'bubble-row';
+  const card = document.createElement('div');
+  card.className = 'card error-card';
+  card.innerHTML = '<div class="card-title">Run aborted</div><div class="error-msg" style="font-size:13px;"></div>';
+  card.querySelector('.error-msg').textContent = reason || 'Rejected at an approval gate.';
+  row.appendChild(card);
+  thread.appendChild(row);
+  scrollThreadToBottom();
+}
+
+// Real human-in-the-loop gate: the backend graph has genuinely paused and is
+// waiting on a resume. Resolves to true/false once the user taps a button.
+function addApprovalCard(evt) {
+  const gateLabel = evt.gate === 'plan' ? 'Plan' : 'Final output';
+  const detail = evt.gate === 'plan' ? evt.payload.plan : evt.payload.final_output;
+
+  const row = document.createElement('div');
+  row.className = 'bubble-row';
+  const card = document.createElement('div');
+  card.className = 'card approval-card';
+  card.innerHTML =
+    '<div class="card-title">Approval needed · ' + gateLabel + '</div>' +
+    '<pre class="approval-detail"></pre>' +
+    '<div class="approval-actions">' +
+    '<button class="icon-btn reject-btn">Reject</button>' +
+    '<button class="icon-btn approve-btn">Approve</button>' +
+    '</div>';
+  card.querySelector('.approval-detail').textContent = detail || '';
+  row.appendChild(card);
+  thread.appendChild(row);
+  scrollThreadToBottom();
+
+  return new Promise((resolve) => {
+    const actions = card.querySelector('.approval-actions');
+    const finish = (approved) => {
+      actions.innerHTML = '<span class="decision-label">' +
+        (approved ? '✓ Approved' : '✕ Rejected') + '</span>';
+      resolve(approved);
+    };
+    card.querySelector('.approve-btn').onclick = () => finish(true);
+    card.querySelector('.reject-btn').onclick = () => finish(false);
+  });
+}
+
+// Reads one SSE stream to completion, updating the run's timeline card as
+// real events arrive. On an approval gate it shows the gate, waits for the
+// user's decision, then POSTs the resume and keeps consuming — same
+// timeline, same thread — until the run actually finishes.
+async function consumeStream(response, stepsEl, threadId) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let lastStage = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const parts = buffer.split('\n\n');
+    buffer = parts.pop();
+
+    for (const part of parts) {
+      const line = part.split('\n').find((l) => l.startsWith('data: '));
+      if (!line) continue;
+      const evt = JSON.parse(line.slice(6));
+
+      if (evt.type === 'stage') {
+        if (lastStage) setStepState(stepsEl, lastStage, 'done', 'Done');
+        setStepState(stepsEl, evt.stage, 'active', evt.message);
+        lastStage = evt.stage;
+      } else if (evt.type === 'awaiting_approval') {
+        if (lastStage) setStepState(stepsEl, lastStage, 'done', 'Done');
+        const approved = await addApprovalCard(evt);
+        const res = await fetch('/v1/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ thread_id: threadId, resume: { approved } }),
+        });
+        await consumeStream(res, stepsEl, threadId);
+        return;
+      } else if (evt.type === 'completed') {
+        if (lastStage) setStepState(stepsEl, lastStage, 'done', 'Done');
+        const ok = evt.result && evt.result.success;
+        addResultCard(ok ? evt.result.final_output : 'Swarm did not complete successfully.');
+      } else if (evt.type === 'aborted') {
+        markAllError(stepsEl);
+        addAbortedCard(evt.reason);
+      } else if (evt.type === 'error') {
+        markAllError(stepsEl);
+        addErrorCard(evt.error || 'Unknown error');
+      }
+    }
+  }
+}
+
 function setRunning(isRunning) {
   running = isRunning;
   sendBtn.disabled = isRunning;
@@ -448,6 +557,10 @@ function setRunning(isRunning) {
   statusDot.classList.toggle('busy', isRunning);
   topbarSub.textContent = isRunning ? 'local-first · running swarm…' : 'local-first · idle';
 }
+
+// One thread per page load, so concurrent dashboard tabs/users don't share
+// a run (the backend keeps one paused-run slot per thread_id).
+const THREAD_ID = 'dashboard-' + Math.random().toString(36).slice(2, 10);
 
 async function runSwarm() {
   if (running) return;
@@ -465,41 +578,9 @@ async function runSwarm() {
     const response = await fetch('/v1/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ goal }),
+      body: JSON.stringify({ goal, thread_id: THREAD_ID }),
     });
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let lastStage = null;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      const parts = buffer.split('\n\n');
-      buffer = parts.pop();
-
-      for (const part of parts) {
-        const line = part.split('\n').find((l) => l.startsWith('data: '));
-        if (!line) continue;
-        const evt = JSON.parse(line.slice(6));
-
-        if (evt.type === 'stage') {
-          if (lastStage) setStepState(stepsEl, lastStage, 'done', 'Done');
-          setStepState(stepsEl, evt.stage, 'active', evt.message);
-          lastStage = evt.stage;
-        } else if (evt.type === 'completed') {
-          if (lastStage) setStepState(stepsEl, lastStage, 'done', 'Done');
-          const ok = evt.result && evt.result.success;
-          addResultCard(ok ? evt.result.final_output : 'Swarm did not complete successfully.');
-        } else if (evt.type === 'error') {
-          markAllError(stepsEl);
-          addErrorCard(evt.error || 'Unknown error');
-        }
-      }
-    }
+    await consumeStream(response, stepsEl, THREAD_ID);
   } catch (err) {
     markAllError(stepsEl);
     addErrorCard(String(err));

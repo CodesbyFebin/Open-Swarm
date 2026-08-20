@@ -10,22 +10,26 @@ Open Swarm makes parallel multi-agent coding accessible, private, and zero-cost.
 
 - [x] Core router with local-first routing
 - [x] Blackboard stigmergy memory
-- [x] LangGraph orchestrator with basic workflow
-- [x] FastAPI SSE server with dashboard
-- [x] CLI interface
-- [x] Docker stack (Ollama + LiteLLM)
+- [x] LangGraph orchestrator with parallel workers
+- [x] **Real LangGraph interrupts** for human gates (plan + final approval,
+      resumable via CLI prompt or `/v1/stream` + `/v1/approve`)
+- [x] FastAPI SSE server with a mobile-first dashboard
+- [x] CLI interface (including a real interactive approval flow)
+- [x] Docker service stack (Ollama + LiteLLM)
 - [x] Playbook system
-- [x] Basic sandbox
 - [x] Configuration system
 
 ## 🚧 In Progress (v0.2)
 
-- [ ] **Real LangGraph interrupts** for human gates
+- [ ] **Docker execution sandbox** — `config/permissions.yaml` declares the
+      policy, but no code yet actually runs agent commands in a container
+      against it (see ARCHITECTURE.md)
 - [ ] **Parallel scout + planner** nodes
 - [ ] **Full Textual TUI** with multi-panel view
 - [ ] **Playbook validation** schema
 - [ ] **MCP tool support** integration
-- [ ] **Agent state persistence** across runs
+- [ ] **Agent state persistence** across process restarts (currently
+      in-memory per orchestrator process, via LangGraph's `MemorySaver`)
 
 ## 📋 Next (v0.3)
 

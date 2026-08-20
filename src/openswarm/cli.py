@@ -3,13 +3,14 @@ Open Swarm CLI
 Command-line interface for swarm operations
 """
 
+import asyncio
 import sys
 from pathlib import Path
 
 import click
 
 from .core.blackboard import get_blackboard
-from .core.orchestrator import run_swarm_workflow
+from .core.orchestrator import get_orchestrator, run_swarm_workflow
 from .core.router import get_router
 
 
@@ -20,11 +21,33 @@ def cli():
     pass
 
 
+def _run_interactive(goal: str, thread_id: str) -> dict:
+    """Drive a swarm run, prompting on the CLI at each real approval gate."""
+
+    async def _drive():
+        orchestrator = get_orchestrator()
+        result = await orchestrator.run_swarm(goal, {"thread_id": thread_id})
+        while result.get("status") == "awaiting_approval":
+            gate = result.get("gate")
+            detail_key = "plan" if gate == "plan" else "final_output"
+            detail = result.get("payload", {}).get(detail_key, "")
+
+            click.echo(f"\n--- Approval needed: {gate} ---")
+            click.echo(detail)
+            click.echo("-" * 60)
+            approved = click.confirm(result.get("message") or "Approve?", default=True)
+            result = await orchestrator.resume_swarm(thread_id, approved=approved)
+        return result
+
+    return asyncio.run(_drive())
+
+
 @cli.command()
 @click.argument("goal")
 @click.option("--thread-id", default="default", help="Thread ID for stateful execution")
 @click.option("--playbook", default=None, help="Playbook to use")
-async def run(goal, thread_id, playbook):
+@click.option("--yes", "-y", is_flag=True, help="Auto-approve every gate instead of prompting")
+def run(goal, thread_id, playbook, yes):
     """Run a swarm workflow with the given goal"""
     click.echo(f"[Open Swarm] Running: {goal}")
 
@@ -32,14 +55,21 @@ async def run(goal, thread_id, playbook):
         click.echo(f"[Open Swarm] Using playbook: {playbook}")
 
     try:
-        result = await run_swarm_workflow(goal)
+        if yes:
+            result = asyncio.run(run_swarm_workflow(goal, thread_id))
+        else:
+            result = _run_interactive(goal, thread_id)
 
-        if result.get("success"):
+        status = result.get("status")
+        if status == "completed":
             click.echo("\n✓ Swarm completed successfully")
             click.echo("\nFinal Output:")
             click.echo("=" * 60)
             click.echo(result.get("final_output", ""))
             click.echo("=" * 60)
+        elif status == "aborted":
+            click.echo(f"\n✗ Swarm aborted: {result.get('error')}")
+            sys.exit(1)
         else:
             click.echo(f"\n✗ Swarm failed: {result.get('error')}")
             sys.exit(1)

@@ -12,7 +12,7 @@ Open Swarm is a local-first design for parallel, heterogeneous multi-agent codin
 
 **Landing page:** [open-swarm.vercel.app](https://open-swarm.vercel.app/) · **Docs:** [Architecture](docs/ARCHITECTURE.md) · [Getting Started](docs/GETTING_STARTED.md) · [Roadmap](ROADMAP.md)
 
-> **Project status:** early alpha. The router, blackboard, and orchestrator are implemented and tested; the TUI is a placeholder and cloud-provider adapters are not yet load-tested end-to-end. See [ROADMAP.md](ROADMAP.md) for what's next — contributions welcome.
+> **Project status:** early alpha. The router, blackboard, and orchestrator are implemented and tested, including real human-in-the-loop approval gates (LangGraph `interrupt()`, not simulated) reachable from both the CLI and the API. The TUI is a placeholder, the Docker execution sandbox is design-only (no code yet), and cloud-provider adapters are not load-tested end-to-end. See [ROADMAP.md](ROADMAP.md) for what's next — contributions welcome.
 
 ## Table of Contents
 
@@ -34,7 +34,8 @@ Open Swarm enables multiple AI agents to work in parallel on complex coding task
 - **Local-first + free-tier hybrid**: prefer local Ollama models; fall back to free cloud tiers automatically
 - **Parallel by default**: agents run concurrently where possible
 - **Intelligent router**: lightweight heuristic router decides which models handle each sub-task, with rate-limit-aware fallback chains
-- **Sandbox + permission model**: Docker isolation with human approval gates
+- **Real human-in-the-loop**: the swarm genuinely pauses (LangGraph `interrupt()`) before coding and before finalizing, resumable from the CLI or the dashboard — not a canned demo step
+- **Sandbox + permission model**: `config/permissions.yaml` policy plus a Docker service stack today; per-command Docker execution against that policy is still on the [roadmap](ROADMAP.md)
 - **Open & composable**: Python core with playbook workflows and MCP support on the roadmap
 
 ## Quick Start
@@ -79,7 +80,7 @@ Full design notes, swarm patterns, and data flow live in [docs/ARCHITECTURE.md](
 
 | Interface | Command | Notes |
 |---|---|---|
-| ⚡ CLI | `openswarm run "your goal"` | Scriptable, CI-friendly |
+| ⚡ CLI | `openswarm run "your goal"` | Prompts for approval at each gate; pass `-y`/`--yes` for scripted, CI-friendly runs |
 | 📱 Dashboard | `openswarm serve` → `http://localhost:8000/dashboard` | Mobile-first chat UI with a live agent timeline, streamed over SSE |
 | 🖥️ TUI | `openswarm tui` | Placeholder today — multi-panel view is on the [roadmap](ROADMAP.md) |
 
